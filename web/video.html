@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>科学教育 AIGC 评估系统 - 视频裁判</title>
+    <link rel="stylesheet" href="/web/styles.css" />
+    <!-- 引入 Chart.js 和 Lucide Icons -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+  </head>
+  <body class="tech-page">
+    <div class="tech-bg-grid"></div>
+    <div class="tech-bg-scanline"></div>
+    <div class="tech-bg-noise"></div>
+    <canvas id="particleLayer" class="tech-bg-particles" aria-hidden="true"></canvas>
+    <div class="tech-orbit-ring" style="top: 8%; left: -100px;"></div>
+    <div class="tech-orbit-ring" style="bottom: -120px; right: -120px; animation-duration: 36s; animation-direction: reverse;"></div>
+    <header>
+      <h1><i data-lucide="sparkles"></i> 科学教育 AIGC 评估</h1>
+      <p>融合 X-CLIP 视频一致性评估系统</p>
+      <nav>
+        <a class="tab" href="./index.html"><i data-lucide="home"></i> 首页</a>
+        <a class="tab" href="/web/image.html"><i data-lucide="layout-dashboard"></i> 图像裁判</a>
+        <a class="tab" href="/web/text.html"><i data-lucide="file-text"></i> 文本裁判</a>
+        <a class="tab" href="/web/video.html" aria-current="page"><i data-lucide="video"></i> 视频裁判</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="card animate-in">
+        <h2 class="section-title"><i data-lucide="upload-cloud"></i> 视频内容上传与指令输入</h2>
+        <div class="grid">
+          <div>
+            <label for="prompt">生成指令 (Prompt) / 视频描述</label>
+            <textarea id="prompt" rows="4" placeholder="例如：一段展示有丝分裂过程的动画，包含染色体排列和分离的细节"></textarea>
+            <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px;">
+              <div>
+                <label for="subject" style="font-size: 13px;">评估科目 (可选)</label>
+                <select id="subject" style="width: 100%; padding: 8px; border-radius: 8px; border: 1px solid var(--border); font-size: 13px;">
+                  <option value="">-- 请选择科目 --</option>
+                  <option value="科学">科学</option>
+                  <option value="物理">物理</option>
+                  <option value="化学">化学</option>
+                  <option value="生物">生物</option>
+                  <option value="地理">地理</option>
+                  <option value="信息技术">信息技术</option>
+                </select>
+              </div>
+              <div>
+                <label for="grade" style="font-size: 13px;">目标学段 (可选)</label>
+                <select id="grade" style="width: 100%; padding: 8px; border-radius: 8px; border: 1px solid var(--border); font-size: 13px;">
+                  <option value="">-- 请选择学段 --</option>
+                  <option value="小学低年级">小学低年级 (1-3年级)</option>
+                  <option value="小学高年级">小学高年级 (4-6年级)</option>
+                  <option value="初中">初中</option>
+                  <option value="高中">高中</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div>
+            <label for="video">生成视频</label>
+            <div style="border: 2px dashed var(--border); padding: 20px; text-align: center; border-radius: 12px; background: #f8fafc; cursor: pointer;" onclick="document.getElementById('video').click()">
+              <input id="video" type="file" accept="video/*" style="display: none;" />
+              <div id="uploadPlaceholder">
+                <i data-lucide="video" style="width: 48px; height: 48px; color: #94a3b8; margin-bottom: 8px;"></i>
+                <div class="muted">点击或拖拽视频到此处上传</div>
+              </div>
+              <div id="previewContainer" style="display:none; margin-top: 10px;">
+                <video id="videoPreview" controls style="max-width: 100%; max-height: 200px; border-radius: 8px; box-shadow: var(--shadow-md);"></video>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="row" style="margin-top:20px; justify-content: flex-end; gap: 10px;">
+          <button id="btnReport" class="primary-btn" style="background: var(--primary); color: white; padding: 12px 28px; border-radius: 10px; border: none; cursor: pointer; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+            <i data-lucide="zap"></i> 生成视频评估报告
+          </button>
+        </div>
+        <div id="status" class="muted" style="margin-top:12px; text-align: right;"></div>
+        <div id="error" class="error" style="margin-top:12px; text-align: right; font-weight: 500;"></div>
+      </section>
+
+      <!-- 评估报告区域 -->
+      <div id="reportArea" style="display:none;">
+        <section class="card report-card animate-in delay-1">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+              <h2 class="section-title" style="margin-bottom: 4px;"><i data-lucide="bar-chart-3"></i> 视频评估报告</h2>
+              <p class="muted" id="reportTime"></p>
+            </div>
+            <div style="text-align: right;">
+              <div class="score-badge" id="totalScore">0</div>
+              <div class="muted" style="margin-top: 8px; font-weight: 600;">视频匹配评分</div>
+            </div>
+          </div>
+
+          <hr style="border: 0; border-top: 1px solid var(--border); margin: 24px 0;" />
+
+          <div class="grid" style="align-items: stretch;">
+            <div style="display: flex; flex-direction: column; min-width: 0;">
+              <h3 class="section-title" style="font-size: 16px;"><i data-lucide="radar"></i> 视频一致性指标</h3>
+              <div class="metric-grid">
+                <div class="metric-item">
+                  <div class="muted" style="font-size: 12px; margin-bottom: 4px;">X-CLIP 相似度</div>
+                  <div id="xclipSimilarity" style="font-size: 20px; font-weight: 800; color: var(--primary);">-</div>
+                </div>
+                <div class="metric-item">
+                  <div class="muted" style="font-size: 12px; margin-bottom: 4px;">评估模型</div>
+                  <div id="modelName" style="font-size: 14px; font-weight: 600;">-</div>
+                </div>
+              </div>
+            </div>
+            <div style="min-width: 0;">
+              <h3 class="section-title" style="font-size: 16px;"><i data-lucide="check-circle-2"></i> 评估结论</h3>
+              <div id="summaryBox" style="padding: 18px; border-radius: var(--radius-md); background: #f8fafc; border: 1px solid var(--border); margin-bottom: 20px; overflow: hidden;">
+                <p id="summaryText" style="font-weight: 600; color: #1e293b; margin: 0; word-break: break-word;"></p>
+                <div style="margin-top: 12px;">
+                  <span id="qualityBadge" class="badge"></span>
+                </div>
+              </div>
+              <div id="adviceArea" style="display:none; margin-top: 20px; padding: 20px; border-radius: 12px; background: white; border: 1px solid var(--border); box-shadow: var(--shadow-sm);">
+                <h4 style="margin: 0 0 12px 0; font-size: 15px; color: var(--primary); display: flex; align-items: center; gap: 6px;">
+                  <i data-lucide="lightbulb" style="width: 18px; height: 18px;"></i> Qwen 教学评价与建议
+                </h4>
+                <div id="adviceSummary" style="font-size: 14px; line-height: 1.6; color: #334155; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px dashed var(--border);"></div>
+                <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 15px;">
+                  <div>
+                    <div style="font-size: 12px; font-weight: 700; color: #059669; margin-bottom: 6px;">亮点分析</div>
+                    <ul id="adviceHighlights" style="margin: 0; padding-left: 18px; font-size: 13px; color: #475569;"></ul>
+                  </div>
+                  <div>
+                    <div style="font-size: 12px; font-weight: 700; color: #dc2626; margin-bottom: 6px;">改进空间</div>
+                    <ul id="adviceIssues" style="margin: 0; padding-left: 18px; font-size: 13px; color: #475569;"></ul>
+                  </div>
+                </div>
+                <div style="margin-top: 15px; padding-top: 12px; border-top: 1px solid #f1f5f9;">
+                  <div style="font-size: 12px; font-weight: 700; color: var(--primary); margin-bottom: 6px;">针对性建议</div>
+                  <ul id="adviceSuggestions" style="margin: 0; padding-left: 18px; font-size: 13px; color: #1e293b; font-weight: 500;"></ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <script src="/web/js/app_video.js"></script>
+    <script>
+      // 粒子背景初始化逻辑 (保持一致性)
+      function initSubtleParticles() {
+        const canvas = document.getElementById("particleLayer");
+        if (!canvas) return;
+        const ctx = canvas.getContext("2d");
+        const dpr = window.devicePixelRatio || 1;
+        const particles = [];
+        const count = 30;
+
+        function resize() {
+          canvas.width = window.innerWidth * dpr;
+          canvas.height = window.innerHeight * dpr;
+          ctx.scale(dpr, dpr);
+        }
+
+        function create() {
+          return {
+            x: Math.random() * window.innerWidth,
+            y: Math.random() * window.innerHeight,
+            vx: (Math.random() - 0.5) * 0.5,
+            vy: (Math.random() - 0.5) * 0.5,
+            r: Math.random() * 2 + 1
+          };
+        }
+
+        for (let i = 0; i < count; i++) particles.push(create());
+
+        function draw() {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.fillStyle = "rgba(100, 150, 255, 0.2)";
+          particles.forEach(p => {
+            p.x += p.vx;
+            p.y += p.vy;
+            if (p.x < 0 || p.x > window.innerWidth) p.vx *= -1;
+            if (p.y < 0 || p.y > window.innerHeight) p.vy *= -1;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            ctx.fill();
+          });
+          requestAnimationFrame(draw);
+        }
+
+        window.addEventListener("resize", resize);
+        resize();
+        draw();
+      }
+      initSubtleParticles();
+      lucide.createIcons();
+    </script>
+  </body>
+</html>

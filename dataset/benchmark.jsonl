@@ -1,0 +1,7 @@
+{"id": 1, "image": "images/000020.png", "text": "NaCl 的晶体结构示意图", "error_type": "无", "label": "positive"}
+{"id": 2, "image": "images/000020.png", "text": "NaCl 的分子结构示意图", "error_type": "事实错误", "label": "negative", "rationale": "NaCl 是离子晶体，不以分子形式存在"}
+{"id": 3, "image": "images/000324.png", "text": "铁桥生锈是物理变化", "error_type": "事实错误", "label": "negative", "rationale": "生锈是化学变化"}
+{"id": 4, "image": "images/000009.png", "text": "DNA 复制的示意图", "error_type": "无", "label": "positive"}
+{"id": 5, "image": "images/000141.png", "text": "现代电子显微镜下的细胞", "error_type": "图文不符", "label": "negative", "rationale": "图片展示的是胡克时代的古董显微镜"}
+{"id": 6, "image": "images/000214.png", "text": "使用螺旋测微器测量长度", "error_type": "无", "label": "positive"}
+{"id": 7, "image": "images/000378.png", "text": "乙烯与溴的取代反应", "error_type": "事实错误", "label": "negative", "rationale": "乙烯与溴发生的是加成反应而非取代"}

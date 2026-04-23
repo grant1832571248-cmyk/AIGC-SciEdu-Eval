@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>科学教育 AIGC 评估系统</title>
+    <link rel="stylesheet" href="/web/styles.css" />
+    <!-- 引入 Chart.js 和 Lucide Icons -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+  </head>
+  <body class="tech-page">
+    <div class="tech-bg-grid"></div>
+    <div class="tech-bg-scanline"></div>
+    <div class="tech-bg-noise"></div>
+    <canvas id="particleLayer" class="tech-bg-particles" aria-hidden="true"></canvas>
+    <div class="tech-orbit-ring" style="top: 8%; left: -100px;"></div>
+    <div class="tech-orbit-ring" style="bottom: -120px; right: -120px; animation-duration: 36s; animation-direction: reverse;"></div>
+    <header>
+      <h1><i data-lucide="sparkles"></i> 科学教育 AIGC 评估</h1>
+      <p>融合 CLIP 图文一致性与 Qwen 专业裁判的多维度评估系统</p>
+      <nav>
+        <a class="tab" href="./index.html"><i data-lucide="home"></i> 首页</a>
+        <a class="tab" href="/web/image.html" aria-current="page"><i data-lucide="layout-dashboard"></i> 图像裁判</a>
+        <a class="tab" href="/web/text.html"><i data-lucide="file-text"></i> 文本裁判</a>
+        <a class="tab" href="/web/video.html"><i data-lucide="video"></i> 视频裁判</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="card animate-in">
+        <h2 class="section-title"><i data-lucide="upload-cloud"></i> 内容上传与指令输入</h2>
+        <div class="grid">
+          <div>
+            <label for="prompt">生成指令 (Prompt) / 内容描述</label>
+            <textarea id="prompt" rows="4" placeholder="例如：一张展示 NaCl 离子晶体结构的示意图，包含正负离子交替排列的细节"></textarea>
+            <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px;">
+              <div>
+                <label for="subject" style="font-size: 13px;">评估科目 (可选)</label>
+                <select id="subject" style="width: 100%; padding: 8px; border-radius: 8px; border: 1px solid var(--border); font-size: 13px;">
+                  <option value="">-- 请选择科目 --</option>
+                  <option value="科学">科学</option>
+                  <option value="物理">物理</option>
+                  <option value="化学">化学</option>
+                  <option value="生物">生物</option>
+                  <option value="地理">地理</option>
+                  <option value="信息技术">信息技术</option>
+                </select>
+              </div>
+              <div>
+                <label for="grade" style="font-size: 13px;">目标学段 (可选)</label>
+                <select id="grade" style="width: 100%; padding: 8px; border-radius: 8px; border: 1px solid var(--border); font-size: 13px;">
+                  <option value="">-- 请选择学段 --</option>
+                  <option value="小学低年级">小学低年级 (1-3年级)</option>
+                  <option value="小学高年级">小学高年级 (4-6年级)</option>
+                  <option value="初中">初中</option>
+                  <option value="高中">高中</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div>
+            <label for="image">生成图像</label>
+            <div style="border: 2px dashed var(--border); padding: 20px; text-align: center; border-radius: 12px; background: #f8fafc; cursor: pointer;" onclick="document.getElementById('image').click()">
+              <input id="image" type="file" accept="image/*" style="display: none;" />
+              <div id="uploadPlaceholder">
+                <i data-lucide="image" style="width: 48px; height: 48px; color: #94a3b8; margin-bottom: 8px;"></i>
+                <div class="muted">点击或拖拽图片到此处上传</div>
+              </div>
+              <div id="previewContainer" style="display:none; margin-top: 10px;">
+                <img id="imagePreview" style="max-width: 100%; max-height: 200px; border-radius: 8px; box-shadow: var(--shadow-md);" />
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="row" style="margin-top:20px; justify-content: flex-end; gap: 10px;">
+          <button id="btnReport" class="primary-btn" style="background: var(--primary); color: white; padding: 12px 28px; border-radius: 10px; border: none; cursor: pointer; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+            <i data-lucide="zap"></i> 生成多维评估报告
+          </button>
+        </div>
+        <div id="status" class="muted" style="margin-top:12px; text-align: right;"></div>
+        <div id="error" class="error" style="margin-top:12px; text-align: right; font-weight: 500;"></div>
+      </section>
+
+      <!-- 评估报告区域 -->
+      <div id="reportArea" style="display:none;">
+        <section class="card report-card animate-in delay-1">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+              <h2 class="section-title" style="margin-bottom: 4px;"><i data-lucide="bar-chart-3"></i> 综合评估报告</h2>
+              <p class="muted" id="reportTime"></p>
+            </div>
+            <div style="text-align: right;">
+              <div class="score-badge" id="totalScore">0</div>
+              <div class="muted" style="margin-top: 8px; font-weight: 600;">综合质量评分</div>
+            </div>
+          </div>
+
+          <hr style="border: 0; border-top: 1px solid var(--border); margin: 24px 0;" />
+
+          <div class="grid" style="align-items: stretch;">
+            <div style="display: flex; flex-direction: column; min-width: 0;">
+              <h3 class="section-title" style="font-size: 16px;"><i data-lucide="radar"></i> 多维指标分布</h3>
+              <div class="chart-container" style="flex: 1;">
+                <canvas id="radarChart"></canvas>
+              </div>
+            </div>
+            <div style="min-width: 0;">
+              <h3 class="section-title" style="font-size: 16px;"><i data-lucide="check-circle-2"></i> 核心结论</h3>
+              <div id="summaryBox" style="padding: 18px; border-radius: var(--radius-md); background: #f8fafc; border: 1px solid var(--border); margin-bottom: 20px; overflow: hidden;">
+                <p id="summaryText" style="font-weight: 600; color: #1e293b; margin: 0; word-break: break-word;"></p>
+                <div style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px;">
+                  <span id="qualityBadge" class="badge"></span>
+                  <span id="errorTypeBadge" class="badge"></span>
+                </div>
+              </div>
+              <h4 style="font-size: 14px; margin-bottom: 10px; color: var(--muted);">主要亮点</h4>
+              <ul id="reportHighlights" class="list" style="font-size: 14px;"></ul>
+            </div>
+          </div>
+        </section>
+
+        <div class="grid">
+          <section class="card animate-in delay-2">
+            <h3 class="section-title"><i data-lucide="microscope"></i> 科学事实分析</h3>
+            <div id="scienceAnalysis" style="font-size: 14px; line-height: 1.7; color: #334155;"></div>
+          </section>
+          <section class="card animate-in delay-2">
+            <h3 class="section-title"><i data-lucide="git-compare"></i> 图文一致性详情</h3>
+            <div class="metric-grid">
+              <div class="metric-item">
+                <div class="muted" style="font-size: 12px; margin-bottom: 4px;">CLIP 相似度</div>
+                <div id="clipSimilarity" style="font-size: 20px; font-weight: 800; color: var(--primary);">-</div>
+              </div>
+              <div class="metric-item">
+                <div class="muted" style="font-size: 12px; margin-bottom: 4px;">匹配等级</div>
+                <div id="matchLevel" style="font-size: 18px; font-weight: 800;">-</div>
+              </div>
+            </div>
+            <div style="margin-top: 20px;">
+              <h4 style="font-size: 14px; margin-bottom: 10px; color: var(--muted);">识别到的缺陷</h4>
+              <ul id="reportIssues" class="list" style="font-size: 13px; color: var(--danger);"></ul>
+            </div>
+          </section>
+        </div>
+
+        <section class="card animate-in delay-3">
+          <h3 class="section-title"><i data-lucide="lightbulb"></i> 可执行改进建议 (面向教师)</h3>
+          <div id="reportSuggestions" class="grid" style="grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;">
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <script src="/web/js/app_image.js"></script>
+    <script>
+      /**
+       * 初始化低干扰粒子背景，保持科技感但不影响阅读与操作。
+       * Why: 统一首页与业务页视觉语言，避免花哨动效干扰任务流。
+       */
+      function initSubtleParticles() {
+        try {
+          const canvas = document.getElementById("particleLayer");
+          if (!(canvas instanceof HTMLCanvasElement)) {
+            return;
+          }
+
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            return;
+          }
+
+          const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+          const dpr = Math.min(window.devicePixelRatio || 1, 2);
+          const particles = [];
+          const targetCount = reducedMotion ? 0 : 26;
+          let rafId = 0;
+
+          function resizeCanvas() {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            canvas.width = Math.floor(width * dpr);
+            canvas.height = Math.floor(height * dpr);
+            canvas.style.width = width + "px";
+            canvas.style.height = height + "px";
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          }
+
+          function createParticle() {
+            const speedBase = 0.11 + Math.random() * 0.16;
+            const angle = Math.random() * Math.PI * 2;
+            return {
+              x: Math.random() * window.innerWidth,
+              y: Math.random() * window.innerHeight,
+              vx: Math.cos(angle) * speedBase,
+              vy: Math.sin(angle) * speedBase,
+              r: 0.8 + Math.random() * 1.6,
+              alpha: 0.1 + Math.random() * 0.16,
+            };
+          }
+
+          function resetParticles() {
+            particles.length = 0;
+            for (let i = 0; i < targetCount; i += 1) {
+              particles.push(createParticle());
+            }
+          }
+
+          function update() {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            ctx.clearRect(0, 0, width, height);
+
+            for (const p of particles) {
+              p.x += p.vx;
+              p.y += p.vy;
+
+              if (p.x < -20) p.x = width + 20;
+              if (p.x > width + 20) p.x = -20;
+              if (p.y < -20) p.y = height + 20;
+              if (p.y > height + 20) p.y = -20;
+
+              ctx.beginPath();
+              ctx.fillStyle = "rgba(59,130,246," + p.alpha.toFixed(3) + ")";
+              ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+              ctx.fill();
+            }
+
+            rafId = window.requestAnimationFrame(update);
+          }
+
+          function handleResize() {
+            resizeCanvas();
+            if (particles.length === 0 && targetCount > 0) {
+              resetParticles();
+            }
+          }
+
+          resizeCanvas();
+          resetParticles();
+          update();
+          window.addEventListener("resize", handleResize);
+
+          window.addEventListener("beforeunload", () => {
+            if (rafId) {
+              window.cancelAnimationFrame(rafId);
+            }
+          });
+        } catch (error) {
+          // 防御性降级：粒子初始化失败不影响主业务功能。
+          console.error("particle layer init failed:", error);
+        }
+      }
+
+      /**
+       * 头部轻微鼠标视差：增强科技感，不影响可读性。
+       * Why: 只对伪元素做 1~2px 偏移，提供动态反馈但不花哨。
+       */
+      function bindHeaderParallax() {
+        const header = document.querySelector("header");
+        if (!(header instanceof HTMLElement)) {
+          return;
+        }
+
+        const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        const coarsePointer = window.matchMedia("(pointer: coarse)").matches;
+        if (reducedMotion || coarsePointer) {
+          return;
+        }
+
+        const maxOffsetPx = 2;
+
+        header.addEventListener("mousemove", (event) => {
+          const rect = header.getBoundingClientRect();
+          if (rect.width <= 0 || rect.height <= 0) {
+            return;
+          }
+          const nx = (event.clientX - rect.left) / rect.width - 0.5;
+          const ny = (event.clientY - rect.top) / rect.height - 0.5;
+          const ox = nx * maxOffsetPx;
+          const oy = ny * maxOffsetPx;
+          header.style.setProperty("--header-parallax-x", ox.toFixed(2) + "px");
+          header.style.setProperty("--header-parallax-y", oy.toFixed(2) + "px");
+        });
+
+        header.addEventListener("mouseleave", () => {
+          header.style.setProperty("--header-parallax-x", "0px");
+          header.style.setProperty("--header-parallax-y", "0px");
+        });
+      }
+
+      initSubtleParticles();
+      bindHeaderParallax();
+      // 初始化 Lucide 图标
+      lucide.createIcons();
+    </script>
+  </body>
+</html>
