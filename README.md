@@ -66,4 +66,17 @@ uv run python -c "import train; train.train(preferred_device='cpu')"（说明：
 
 ### Qwen训练
 
+python qwen_train.py
+    --model_name_or_path "Qwen/Qwen2.5-7B-Instruct"
+    --train_jsonl "data/train.jsonl"
+    --output_dir "checkpoints/qwen_lora_output"
+    --num_train_epochs 3
+    --per_device_train_batch_size 4
+    --gradient_accumulation_steps 4
+    --learning_rate 2e-4
+    --lora_r 16
+    --bf16 
+
 ### 数据集添加文件
+
+见 `add_dataset_from_folder.py`文件中的具体描述
