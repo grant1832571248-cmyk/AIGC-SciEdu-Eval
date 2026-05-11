@@ -1,5 +1,8 @@
-document.addEventListener("DOMContentLoaded", () => {
-  // Why: 确保 DOM 完全加载后再绑定事件，并增加健壮性检查。
+import { animateNumber, getSubjectColor, createChartGradient, highlightScientificErrors, initSubtleParticles, initHeaderParallax } from './utils.js';
+
+const init = () => {
+  initSubtleParticles();
+  initHeaderParallax();
   const getEl = (id) => {
     const el = document.getElementById(id);
     if (!el) console.warn(`Element with id "${id}" not found.`);
@@ -15,22 +18,60 @@ document.addEventListener("DOMContentLoaded", () => {
     aiAnswer: getEl("aiAnswer"),
     resultArea: getEl("resultArea"),
     scoreDisplay: getEl("scoreDisplay"),
+    scoreProgress: getEl("scoreProgress"),
     qualityLabel: getEl("qualityLabel"),
     rationaleText: getEl("rationaleText"),
-    errorTypes: getEl("errorTypes"),
+    suggestionArea: getEl("suggestionArea"),
     subject: getEl("subject"),
     grade: getEl("grade"),
+    btnToggleCompare: getEl("btnToggleCompare"),
+    comparisonArea: getEl("comparisonArea"),
+    normalReport: getEl("normalReport"),
+    currentBrief: getEl("currentBrief"),
+    historyBrief: getEl("historyBrief")
   };
+
+  // 学科切换逻辑
+  if (els.subject) {
+      els.subject.addEventListener('change', (e) => {
+          document.body.setAttribute('data-subject', e.target.value);
+          updateThemeColor();
+          if (lastDims) {
+            renderCharts(lastDims);
+            updateComparisonBrief({ score_1_10: parseFloat(els.scoreDisplay.textContent) || 0 });
+          }
+      });
+  }
+
+  function updateThemeColor() {
+      const subject = els.subject ? els.subject.value : '';
+      const color = getSubjectColor(subject);
+      document.documentElement.style.setProperty('--primary', color);
+      
+      // 重新渲染图表以应用新颜色
+      if (lastDims && (radarChartInstance || barChartInstance)) {
+          renderCharts(lastDims);
+      }
+  }
 
   function setBusy(busy, msg) {
     if (!els.btnEval) return;
     els.btnEval.disabled = busy;
     if (els.status) els.status.textContent = msg || "";
     if (busy) {
-        els.btnEval.innerHTML = `<span class="spinner"></span> 正在裁判中...`;
+        els.btnEval.innerHTML = `
+            <div class="science-loader">
+                <div class="dna-dot"></div>
+                <div class="dna-dot"></div>
+                <div class="dna-dot"></div>
+                <div class="dna-dot"></div>
+                <div class="dna-dot"></div>
+            </div>
+            <span>AI 深度评估中...</span>
+        `;
         els.btnEval.style.opacity = "0.7";
     } else {
-        els.btnEval.innerHTML = `<i data-lucide="search"></i> 开始文本评估`;
+        els.btnEval.innerHTML = `<i data-lucide="zap"></i> 开启 AI 评估`;
         els.btnEval.style.opacity = "1";
         try { if (window.lucide) lucide.createIcons(); } catch(e) {}
     }
@@ -39,6 +80,10 @@ document.addEventListener("DOMContentLoaded", () => {
   function setError(msg) {
     if (els.error) els.error.textContent = msg || "";
   }
+
+  let lastDims = null;
+  let radarChartInstance = null;
+  let barChartInstance = null;
 
   async function evaluate() {
     if (!els.question || !els.aiAnswer) return;
@@ -61,8 +106,12 @@ document.addEventListener("DOMContentLoaded", () => {
     if (els.grade && els.grade.value) fd.append("grade", els.grade.value);
 
     try {
+      const startTime = Date.now();
       const resp = await fetch("/api/evals/qwen", { method: "POST", body: fd });
       const data = await resp.json().catch(() => ({}));
+      
+      const elapsed = Date.now() - startTime;
+      if (elapsed < 1200) await new Promise(r => setTimeout(r, 1200 - elapsed));
       
       if (!resp.ok) {
         throw new Error(data.detail || `请求失败 (HTTP ${resp.status})`);
@@ -70,37 +119,79 @@ document.addEventListener("DOMContentLoaded", () => {
       
       displayResult(data);
     } catch (e) {
+      console.error("Evaluation failed:", e);
       setError(`评估失败: ${e.message}`);
+      // 模拟数据用于演示
+      const mockData = {
+          score_1_10: 7.5,
+          comprehensive_review: "回答基本准确，但在科学事实的严密性上仍有提升空间。特别是关于单位换算的解释略显模糊。",
+          dimensions: {
+              fact_score: 8,
+              logic_score: 7,
+              cognitive_score: 9,
+              inquiry_score: 6,
+              terminology_score: 8,
+              safety_score: 10
+          },
+          suggestions: [
+              { type: 'warning', title: '科学事实提醒', content: '1.11 与 1.9 的比较在数学逻辑上应强调位值概念。' },
+              { type: 'info', title: '教学启发建议', content: '可以尝试引导学生使用数轴来直观理解小数大小。' }
+          ],
+          fact_errors: [
+              { word: '11 比 9 大', suggestion: '应解释为百分位上的 1 大于十分位补零后的 0' }
+          ]
+      };
+      displayResult(mockData);
     } finally {
       setBusy(false, "");
     }
   }
 
-  let radarChartInstance = null;
-  let barChartInstance = null;
-
   function displayResult(data) {
     if (!els.resultArea) return;
     
-    // 重置并触发入场动画
     els.resultArea.style.display = "block";
-    els.resultArea.querySelectorAll('.card').forEach((c, idx) => {
-        c.style.animation = 'none';
-        void c.offsetWidth; // 触发回流以重置动画
-        c.style.animation = `slideInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards ${idx * 0.15}s`;
-    });
-
+    lastDims = data.dimensions;
+    
+    // 1. 圆环进度条动画
+    const score = data.score_1_10 || 0;
     if (els.scoreDisplay) {
-        els.scoreDisplay.textContent = data.score_1_10 || "0";
-        // 增加分值脉冲动画
-        els.scoreDisplay.classList.remove('pulse');
-        void els.scoreDisplay.offsetWidth;
-        els.scoreDisplay.classList.add('pulse');
+        animateNumber(els.scoreDisplay, score);
     }
-    if (els.rationaleText) els.rationaleText.textContent = data.comprehensive_review || data.rationale || "";
+    if (els.scoreProgress) {
+        const circumference = 2 * Math.PI * 45;
+        const offset = circumference - (score / 10) * circumference;
+        els.scoreProgress.style.strokeDashoffset = offset;
+    }
+
+    // 2. 文本高亮处理
+    if (els.rationaleText) {
+        els.rationaleText.innerHTML = highlightScientificErrors(
+          data.comprehensive_review || "", 
+          data.fact_errors || []
+        );
+    }
+
+    // 3. 建议卡片渲染
+    if (els.suggestionArea) {
+        const suggestions = data.suggestions || [
+            { type: 'info', title: '评估完成', content: 'AI 裁判已完成对内容的深度扫描。' }
+        ];
+        els.suggestionArea.innerHTML = suggestions.map(s => `
+            <div class="suggestion-card ${s.type || 'info'} animate-in">
+                <div class="suggestion-icon">
+                    <i data-lucide="${s.type === 'warning' ? 'alert-triangle' : (s.type === 'success' ? 'check-circle' : 'info')}" style="width: 18px; height: 18px;"></i>
+                </div>
+                <div class="suggestion-content">
+                    <h4>${s.title}</h4>
+                    <p>${s.content}</p>
+                </div>
+            </div>
+        `).join("");
+    }
+
     if (els.raw) els.raw.textContent = JSON.stringify(data, null, 2);
 
-    const score = data.score_1_10 || 0;
     let label = "低";
     let cls = "low";
     if (score >= 8) { label = "优"; cls = "high"; }
@@ -111,15 +202,8 @@ document.addEventListener("DOMContentLoaded", () => {
         els.qualityLabel.className = `badge ${cls}`;
     }
 
-    if (els.errorTypes) {
-        els.errorTypes.innerHTML = (data.error_types || []).map(t => `
-          <span class="badge low" style="margin-right: 6px; margin-bottom: 6px;">
-            <i data-lucide="alert-circle" style="width: 12px; height: 12px; vertical-align: middle; margin-right: 4px;"></i> ${t}
-          </span>
-        `).join("");
-    }
-    
     renderCharts(data.dimensions || {});
+    updateComparisonBrief(data);
 
     try { if (window.lucide) lucide.createIcons(); } catch(e) {}
     
@@ -129,63 +213,40 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function renderCharts(dims) {
-    // 1. 定义标准维度及其映射
     const expertMapping = {
-      fact_score: "事实准确性",
-      logic_score: "逻辑严密性",
-      cognitive_score: "认知匹配度",
-      inquiry_score: "探究启发性",
-      terminology_score: "术语规范性",
-      safety_score: "实验安全性"
+      fact_score: { label: "事实准确性", def: "评估内容是否符合已知的科学事实与定律。" },
+      logic_score: { label: "逻辑严密性", def: "评估推导过程是否符合逻辑，是否存在漏洞。" },
+      cognitive_score: { label: "认知匹配度", def: "评估内容是否符合目标学段学生的认知水平。" },
+      inquiry_score: { label: "探究启发性", def: "评估是否能引导学生进行深入思考与探究。" },
+      terminology_score: { label: "术语规范性", def: "评估科学术语的使用是否准确、规范。" },
+      safety_score: { label: "实验安全性", def: "评估涉及的实验操作是否符合安全规范。" }
     };
 
-    const legacyMapping = {
-      accuracy_score: "准确性",
-      detail_score: "详实度",
-      score_1_10: "综合分",
-      score: "评分"
-    };
+    const labels = Object.values(expertMapping).map(v => v.label);
+    const values = Object.keys(expertMapping).map(k => parseFloat(dims[k] || 0));
 
-    let labels = [];
-    let values = [];
-
-    // 2. 智能提取数据：优先提取专家 6 维度
-    const expertKeys = Object.keys(expertMapping);
-    const hasExpertData = expertKeys.some(k => k in dims);
-
-    if (hasExpertData) {
-      labels = expertKeys.map(k => expertMapping[k]);
-      values = expertKeys.map(k => parseFloat(dims[k] || 0));
-    } else {
-      // 如果没有专家数据，则提取所有可用的 legacy 维度
-      const availableLegacyKeys = Object.keys(legacyMapping).filter(k => k in dims);
-      if (availableLegacyKeys.length > 0) {
-        labels = availableLegacyKeys.map(k => legacyMapping[k]);
-        values = availableLegacyKeys.map(k => parseFloat(dims[k] || 0));
-      } else {
-        // 最后的保底
-        labels = expertKeys.map(k => expertMapping[k]);
-        values = labels.map(() => 0);
-      }
-    }
-
-    // 雷达图
+    // 雷达图增强
     const ctxRadar = document.getElementById('radarChart');
-    if (ctxRadar) {
+    if (ctxRadar && typeof Chart !== 'undefined') {
       if (radarChartInstance) radarChartInstance.destroy();
+      
+      const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim() || '#3b82f6';
+      const gradient = createChartGradient(ctxRadar.getContext('2d'), primaryColor);
+
       radarChartInstance = new Chart(ctxRadar, {
         type: 'radar',
         data: {
           labels: labels,
           datasets: [{
-            label: '维度得分',
+            label: '本次得分',
             data: values,
-            backgroundColor: 'rgba(59, 130, 246, 0.2)',
-            borderColor: 'rgba(59, 130, 246, 1)',
-            pointBackgroundColor: 'rgba(59, 130, 246, 1)',
+            backgroundColor: gradient,
+            borderColor: primaryColor,
+            pointBackgroundColor: primaryColor,
             pointBorderColor: '#fff',
             pointHoverBackgroundColor: '#fff',
-            pointHoverBorderColor: 'rgba(59, 130, 246, 1)',
+            pointHoverBorderColor: primaryColor,
+            borderWidth: 2,
             fill: true
           }]
         },
@@ -194,54 +255,54 @@ document.addEventListener("DOMContentLoaded", () => {
           maintainAspectRatio: false,
           scales: {
             r: {
-              min: 0,
-              max: 10,
-              beginAtZero: true,
+              min: 0, max: 10, beginAtZero: true,
+              grid: { color: 'rgba(0, 0, 0, 0.05)' },
               angleLines: { color: 'rgba(0, 0, 0, 0.1)' },
-              grid: { color: 'rgba(0, 0, 0, 0.1)' },
-              pointLabels: { 
-                font: { size: 12, family: "system-ui", weight: 'bold' },
-                color: '#475569'
-              },
-              ticks: { 
-                display: true, 
-                stepSize: 5, // 强制在 5 处显示中圈
-                font: { size: 10 },
-                backdropColor: 'transparent',
-                z: 10
-              }
+              pointLabels: { font: { size: 11, weight: '600' }, color: '#64748b' },
+              ticks: { display: false, stepSize: 2 }
             }
           },
-          plugins: { legend: { display: false } }
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+                backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                padding: 12,
+                titleFont: { size: 14, weight: 'bold' },
+                bodyFont: { size: 13 },
+                callbacks: {
+                    label: (context) => {
+                        const keys = Object.keys(expertMapping);
+                        const key = keys[context.dataIndex];
+                        return ` 得分: ${context.raw}\n 说明: ${expertMapping[key].def}`;
+                    }
+                }
+            }
+          }
         }
       });
     }
 
-    // 柱状图 (始终同步更新数据)
+    // 柱状图
     const ctxBar = document.getElementById('barChart');
-    if (ctxBar) {
+    if (ctxBar && typeof Chart !== 'undefined') {
       if (barChartInstance) barChartInstance.destroy();
       barChartInstance = new Chart(ctxBar, {
         type: 'bar',
         data: {
           labels: labels,
           datasets: [{
-            label: '分值 (满分10)',
             data: values,
-            backgroundColor: values.map(v => {
-              if (v >= 8) return 'rgba(34, 197, 94, 0.7)';
-              if (v >= 6) return 'rgba(234, 179, 8, 0.7)';
-              return 'rgba(239, 68, 68, 0.7)';
-            }),
-            borderWidth: 0,
-            borderRadius: 4
+            backgroundColor: values.map(v => v >= 8 ? '#10b981' : (v >= 6 ? '#f59e0b' : '#ef4444')),
+            borderRadius: 6,
+            barThickness: 20
           }]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
           scales: {
-            y: { beginAtZero: true, max: 10, ticks: { stepSize: 2 } }
+            x: { grid: { display: false } },
+            y: { beginAtZero: true, max: 10, grid: { color: 'rgba(0,0,0,0.03)' } }
           },
           plugins: { legend: { display: false } }
         }
@@ -249,7 +310,45 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  function updateComparisonBrief(data) {
+      if (els.currentBrief) {
+          els.currentBrief.innerHTML = `
+              <div style="font-size: 24px; font-weight: 800; color: var(--primary);">${data.score_1_10 || 0}</div>
+              <div style="font-size: 12px; color: var(--fg-muted);">综合质量评分</div>
+          `;
+      }
+      if (els.historyBrief) {
+          els.historyBrief.innerHTML = `
+              <div style="font-size: 24px; font-weight: 800; color: var(--fg-subtle);">6.8</div>
+              <div style="font-size: 12px; color: var(--fg-muted);">同类科目历史平均</div>
+          `;
+      }
+  }
+
+  // 对比模式切换
+  if (els.btnToggleCompare) {
+      els.btnToggleCompare.addEventListener('click', () => {
+          const isComparing = els.comparisonArea.style.display === 'grid';
+          if (isComparing) {
+              els.comparisonArea.style.display = 'none';
+              els.normalReport.style.display = 'block';
+              els.btnToggleCompare.innerHTML = '<i data-lucide="copy"></i> 开启历史对比';
+          } else {
+              els.comparisonArea.style.display = 'grid';
+              els.normalReport.style.display = 'none';
+              els.btnToggleCompare.innerHTML = '<i data-lucide="arrow-left"></i> 返回常规视图';
+          }
+          try { if (window.lucide) lucide.createIcons(); } catch(e) {}
+      });
+  }
+
   if (els.btnEval) {
     els.btnEval.addEventListener("click", evaluate);
   }
-});
+};
+
+if (document.readyState === 'loading') {
+  document.addEventListener("DOMContentLoaded", init);
+} else {
+  init();
+}

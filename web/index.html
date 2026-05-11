@@ -468,153 +468,47 @@
       <div class="shortcuts">Keyboard Navigation: 1 = 图像裁判 · 2 = 文本裁判 · 3 = 视频裁判</div>
     </footer>
 
-    <script>
-      /**
-       * @typedef {Object} Particle
-       * @property {number} x
-       * @property {number} y
-       * @property {number} vx
-       * @property {number} vy
-       * @property {number} r
-       * @property {number} alpha
-       */
+    <script type="module">
+          import { initSubtleParticles, initHeaderParallax } from '/web/js/utils.js';
 
-      /**
-       * 初始化低干扰粒子背景：低密度、低速、轻透明。
-       * Why: 提供“动态科技感”但不抢主内容视觉焦点。
-       */
-      function initSubtleParticles() {
-        try {
-          const canvas = document.getElementById("particleLayer");
-          if (!(canvas instanceof HTMLCanvasElement)) {
-            return;
-          }
-
-          const ctx = canvas.getContext("2d");
-          if (!ctx) {
-            return;
-          }
-
-          const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-          const dpr = Math.min(window.devicePixelRatio || 1, 2);
-          const particles = [];
-          const targetCount = reducedMotion ? 0 : 28;
-          let rafId = 0;
-
-          function resizeCanvas() {
-            const width = window.innerWidth;
-            const height = window.innerHeight;
-            canvas.width = Math.floor(width * dpr);
-            canvas.height = Math.floor(height * dpr);
-            canvas.style.width = width + "px";
-            canvas.style.height = height + "px";
-            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-          }
-
-          /**
-           * @returns {Particle}
-           */
-          function createParticle() {
-            const speedBase = 0.12 + Math.random() * 0.18;
-            const angle = Math.random() * Math.PI * 2;
-            return {
-              x: Math.random() * window.innerWidth,
-              y: Math.random() * window.innerHeight,
-              vx: Math.cos(angle) * speedBase,
-              vy: Math.sin(angle) * speedBase,
-              r: 0.8 + Math.random() * 1.8,
-              alpha: 0.12 + Math.random() * 0.18,
-            };
-          }
-
-          function resetParticles() {
-            particles.length = 0;
-            for (let i = 0; i < targetCount; i += 1) {
-              particles.push(createParticle());
+          // 3D 视差交互：根据鼠标位置改变卡片旋转，强化科技感空间层次
+          function bindCardTilt() {
+            const cards = document.querySelectorAll(".nav-card");
+            for (const card of cards) {
+              card.addEventListener("mousemove", (event) => {
+                const rect = card.getBoundingClientRect();
+                const x = event.clientX - rect.left;
+                const y = event.clientY - rect.top;
+                const rx = ((y / rect.height) - 0.5) * -10;
+                const ry = ((x / rect.width) - 0.5) * 10;
+                card.style.transform = "translateY(-16px) scale(1.02) rotateX(" + rx.toFixed(2) + "deg) rotateY(" + ry.toFixed(2) + "deg)";
+              });
+              card.addEventListener("mouseleave", () => {
+                card.style.transform = "";
+              });
             }
           }
 
-          function update() {
-            const width = window.innerWidth;
-            const height = window.innerHeight;
-            ctx.clearRect(0, 0, width, height);
-
-            for (const p of particles) {
-              p.x += p.vx;
-              p.y += p.vy;
-
-              if (p.x < -20) p.x = width + 20;
-              if (p.x > width + 20) p.x = -20;
-              if (p.y < -20) p.y = height + 20;
-              if (p.y > height + 20) p.y = -20;
-
-              ctx.beginPath();
-              ctx.fillStyle = "rgba(59,130,246," + p.alpha.toFixed(3) + ")";
-              ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-              ctx.fill();
-            }
-
-            rafId = window.requestAnimationFrame(update);
+          // 键盘快速跳转：提高首页到业务模块的访问效率
+          function bindKeyboardNavigation() {
+            window.addEventListener("keydown", (event) => {
+              if (event.key === "1") {
+                window.location.href = "/web/image.html";
+              } else if (event.key === "2") {
+                window.location.href = "/web/text.html";
+              } else if (event.key === "3") {
+                window.location.href = "/web/video.html";
+              }
+            });
           }
 
-          function handleResize() {
-            resizeCanvas();
-            if (particles.length === 0 && targetCount > 0) {
-              resetParticles();
-            }
-          }
-
-          resizeCanvas();
-          resetParticles();
-          update();
-          window.addEventListener("resize", handleResize);
-
-          window.addEventListener("beforeunload", () => {
-            if (rafId) {
-              window.cancelAnimationFrame(rafId);
-            }
+          document.addEventListener('DOMContentLoaded', () => {
+            initSubtleParticles();
+            initHeaderParallax();
+            bindCardTilt();
+            bindKeyboardNavigation();
+            if (window.lucide) lucide.createIcons();
           });
-        } catch (error) {
-          // 防御性降级：粒子层初始化失败时不影响核心导航功能。
-          console.error("particle layer init failed:", error);
-        }
-      }
-
-      // 3D 视差交互：根据鼠标位置改变卡片旋转，强化科技感空间层次
-      function bindCardTilt() {
-        const cards = document.querySelectorAll(".nav-card");
-        for (const card of cards) {
-          card.addEventListener("mousemove", (event) => {
-            const rect = card.getBoundingClientRect();
-            const x = event.clientX - rect.left;
-            const y = event.clientY - rect.top;
-            const rx = ((y / rect.height) - 0.5) * -10;
-            const ry = ((x / rect.width) - 0.5) * 10;
-            card.style.transform = "translateY(-16px) scale(1.02) rotateX(" + rx.toFixed(2) + "deg) rotateY(" + ry.toFixed(2) + "deg)";
-          });
-          card.addEventListener("mouseleave", () => {
-            card.style.transform = "";
-          });
-        }
-      }
-
-      // 键盘快速跳转：提高首页到业务模块的访问效率
-      function bindKeyboardNavigation() {
-        window.addEventListener("keydown", (event) => {
-          if (event.key === "1") {
-            window.location.href = "/web/image.html";
-          } else if (event.key === "2") {
-            window.location.href = "/web/text.html";
-          } else if (event.key === "3") {
-            window.location.href = "/web/video.html";
-          }
-        });
-      }
-
-      initSubtleParticles();
-      bindCardTilt();
-      bindKeyboardNavigation();
-      lucide.createIcons();
-    </script>
+        </script>
   </body>
 </html>

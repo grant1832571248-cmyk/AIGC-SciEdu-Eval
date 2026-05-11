@@ -28,7 +28,7 @@
     </header>
 
     <main>
-      <section class="card animate-in">
+      <section class="card animate-in shimmer-effect">
         <h2 class="section-title"><i data-lucide="upload-cloud"></i> 内容上传与指令输入</h2>
         <div class="grid">
           <div>
@@ -39,12 +39,12 @@
                 <label for="subject" style="font-size: 13px;">评估科目 (可选)</label>
                 <select id="subject" style="width: 100%; padding: 8px; border-radius: 8px; border: 1px solid var(--border); font-size: 13px;">
                   <option value="">-- 请选择科目 --</option>
-                  <option value="科学">科学</option>
-                  <option value="物理">物理</option>
-                  <option value="化学">化学</option>
-                  <option value="生物">生物</option>
-                  <option value="地理">地理</option>
-                  <option value="信息技术">信息技术</option>
+                  <option value="science">科学</option>
+                  <option value="physics">物理</option>
+                  <option value="chemistry">化学</option>
+                  <option value="biology">生物</option>
+                  <option value="earth">地理</option>
+                  <option value="it">信息技术</option>
                 </select>
               </div>
               <div>
@@ -61,7 +61,7 @@
           </div>
           <div>
             <label for="image">生成图像</label>
-            <div style="border: 2px dashed var(--border); padding: 20px; text-align: center; border-radius: 12px; background: #f8fafc; cursor: pointer;" onclick="document.getElementById('image').click()">
+            <div id="uploadArea" class="upload-area">
               <input id="image" type="file" accept="image/*" style="display: none;" />
               <div id="uploadPlaceholder">
                 <i data-lucide="image" style="width: 48px; height: 48px; color: #94a3b8; margin-bottom: 8px;"></i>
@@ -69,12 +69,16 @@
               </div>
               <div id="previewContainer" style="display:none; margin-top: 10px;">
                 <img id="imagePreview" style="max-width: 100%; max-height: 200px; border-radius: 8px; box-shadow: var(--shadow-md);" />
+                <div id="imageMeta" class="preview-info" style="display:none;"></div>
               </div>
             </div>
           </div>
         </div>
         <div class="row" style="margin-top:20px; justify-content: flex-end; gap: 10px;">
-          <button id="btnReport" class="primary-btn" style="background: var(--primary); color: white; padding: 12px 28px; border-radius: 10px; border: none; cursor: pointer; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+          <button id="btnCompare" class="secondary-btn" style="display:none;">
+            <i data-lucide="git-compare"></i> 开启对比模式
+          </button>
+          <button id="btnReport" class="primary-btn">
             <i data-lucide="zap"></i> 生成多维评估报告
           </button>
         </div>
@@ -84,27 +88,29 @@
 
       <!-- 评估报告区域 -->
       <div id="reportArea" style="display:none;">
-        <section class="card report-card animate-in delay-1">
-          <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-            <div>
-              <h2 class="section-title" style="margin-bottom: 4px;"><i data-lucide="bar-chart-3"></i> 综合评估报告</h2>
-              <p class="muted" id="reportTime"></p>
+        <!-- 标准模式视图 -->
+        <div id="standardView">
+          <section class="card report-card animate-in delay-1">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <h2 class="section-title" style="margin-bottom: 4px;"><i data-lucide="bar-chart-3"></i> 综合评估报告</h2>
+                <p class="muted" id="reportTime"></p>
+              </div>
+              <div class="score-circle-container">
+                <svg class="score-circle-svg" viewBox="0 0 100 100">
+                  <circle class="score-circle-bg" cx="50" cy="50" r="45" fill="none"></circle>
+                  <circle id="scoreProgress" class="score-circle-progress" cx="50" cy="50" r="45" stroke-dasharray="283" stroke-dashoffset="283" fill="none"></circle>
+                </svg>
+                <div class="score-text-container">
+                  <span id="totalScore" class="score-value">0</span>
+                  <span class="score-label">Points</span>
+                </div>
+              </div>
             </div>
-            <div style="text-align: right;">
-              <div class="score-badge" id="totalScore">0</div>
-              <div class="muted" style="margin-top: 8px; font-weight: 600;">综合质量评分</div>
-            </div>
-          </div>
 
           <hr style="border: 0; border-top: 1px solid var(--border); margin: 24px 0;" />
 
           <div class="grid" style="align-items: stretch;">
-            <div style="display: flex; flex-direction: column; min-width: 0;">
-              <h3 class="section-title" style="font-size: 16px;"><i data-lucide="radar"></i> 多维指标分布</h3>
-              <div class="chart-container" style="flex: 1;">
-                <canvas id="radarChart"></canvas>
-              </div>
-            </div>
             <div style="min-width: 0;">
               <h3 class="section-title" style="font-size: 16px;"><i data-lucide="check-circle-2"></i> 核心结论</h3>
               <div id="summaryBox" style="padding: 18px; border-radius: var(--radius-md); background: #f8fafc; border: 1px solid var(--border); margin-bottom: 20px; overflow: hidden;">
@@ -112,6 +118,16 @@
                 <div style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px;">
                   <span id="qualityBadge" class="badge"></span>
                   <span id="errorTypeBadge" class="badge"></span>
+                </div>
+              </div>
+              <div class="metric-grid" style="margin-top: 15px;">
+                <div class="metric-item">
+                  <div class="muted" style="font-size: 12px; margin-bottom: 4px;">CLIP 相似度</div>
+                  <div id="clipSimilarity" style="font-size: 20px; font-weight: 800; color: var(--primary);">-</div>
+                </div>
+                <div class="metric-item">
+                  <div class="muted" style="font-size: 12px; margin-bottom: 4px;">匹配等级</div>
+                  <div id="matchLevel" style="font-size: 16px; font-weight: 700;">-</div>
                 </div>
               </div>
               <h4 style="font-size: 14px; margin-bottom: 10px; color: var(--muted);">主要亮点</h4>
@@ -150,149 +166,27 @@
           </div>
         </section>
       </div>
-    </main>
 
-    <script src="/web/js/app_image.js"></script>
-    <script>
-      /**
-       * 初始化低干扰粒子背景，保持科技感但不影响阅读与操作。
-       * Why: 统一首页与业务页视觉语言，避免花哨动效干扰任务流。
-       */
-      function initSubtleParticles() {
-        try {
-          const canvas = document.getElementById("particleLayer");
-          if (!(canvas instanceof HTMLCanvasElement)) {
-            return;
-          }
+      <!-- 对比模式视图 -->
+      <div id="comparisonView" style="display:none;" class="comparison-grid">
+        <section class="card animate-in">
+          <h3 class="section-title"><i data-lucide="history"></i> 历史平均表现</h3>
+          <div class="chart-container">
+            <canvas id="historyChart"></canvas>
+          </div>
+          <div id="historyStats" class="metric-grid" style="margin-top: 20px;"></div>
+        </section>
+        <section class="card animate-in delay-1">
+          <h3 class="section-title"><i data-lucide="trending-up"></i> 本次评估详情</h3>
+          <div class="chart-container">
+            <canvas id="currentChart"></canvas>
+          </div>
+          <div id="currentStats" class="metric-grid" style="margin-top: 20px;"></div>
+        </section>
+      </div>
+    </div>
+  </main>
 
-          const ctx = canvas.getContext("2d");
-          if (!ctx) {
-            return;
-          }
-
-          const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-          const dpr = Math.min(window.devicePixelRatio || 1, 2);
-          const particles = [];
-          const targetCount = reducedMotion ? 0 : 26;
-          let rafId = 0;
-
-          function resizeCanvas() {
-            const width = window.innerWidth;
-            const height = window.innerHeight;
-            canvas.width = Math.floor(width * dpr);
-            canvas.height = Math.floor(height * dpr);
-            canvas.style.width = width + "px";
-            canvas.style.height = height + "px";
-            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-          }
-
-          function createParticle() {
-            const speedBase = 0.11 + Math.random() * 0.16;
-            const angle = Math.random() * Math.PI * 2;
-            return {
-              x: Math.random() * window.innerWidth,
-              y: Math.random() * window.innerHeight,
-              vx: Math.cos(angle) * speedBase,
-              vy: Math.sin(angle) * speedBase,
-              r: 0.8 + Math.random() * 1.6,
-              alpha: 0.1 + Math.random() * 0.16,
-            };
-          }
-
-          function resetParticles() {
-            particles.length = 0;
-            for (let i = 0; i < targetCount; i += 1) {
-              particles.push(createParticle());
-            }
-          }
-
-          function update() {
-            const width = window.innerWidth;
-            const height = window.innerHeight;
-            ctx.clearRect(0, 0, width, height);
-
-            for (const p of particles) {
-              p.x += p.vx;
-              p.y += p.vy;
-
-              if (p.x < -20) p.x = width + 20;
-              if (p.x > width + 20) p.x = -20;
-              if (p.y < -20) p.y = height + 20;
-              if (p.y > height + 20) p.y = -20;
-
-              ctx.beginPath();
-              ctx.fillStyle = "rgba(59,130,246," + p.alpha.toFixed(3) + ")";
-              ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-              ctx.fill();
-            }
-
-            rafId = window.requestAnimationFrame(update);
-          }
-
-          function handleResize() {
-            resizeCanvas();
-            if (particles.length === 0 && targetCount > 0) {
-              resetParticles();
-            }
-          }
-
-          resizeCanvas();
-          resetParticles();
-          update();
-          window.addEventListener("resize", handleResize);
-
-          window.addEventListener("beforeunload", () => {
-            if (rafId) {
-              window.cancelAnimationFrame(rafId);
-            }
-          });
-        } catch (error) {
-          // 防御性降级：粒子初始化失败不影响主业务功能。
-          console.error("particle layer init failed:", error);
-        }
-      }
-
-      /**
-       * 头部轻微鼠标视差：增强科技感，不影响可读性。
-       * Why: 只对伪元素做 1~2px 偏移，提供动态反馈但不花哨。
-       */
-      function bindHeaderParallax() {
-        const header = document.querySelector("header");
-        if (!(header instanceof HTMLElement)) {
-          return;
-        }
-
-        const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-        const coarsePointer = window.matchMedia("(pointer: coarse)").matches;
-        if (reducedMotion || coarsePointer) {
-          return;
-        }
-
-        const maxOffsetPx = 2;
-
-        header.addEventListener("mousemove", (event) => {
-          const rect = header.getBoundingClientRect();
-          if (rect.width <= 0 || rect.height <= 0) {
-            return;
-          }
-          const nx = (event.clientX - rect.left) / rect.width - 0.5;
-          const ny = (event.clientY - rect.top) / rect.height - 0.5;
-          const ox = nx * maxOffsetPx;
-          const oy = ny * maxOffsetPx;
-          header.style.setProperty("--header-parallax-x", ox.toFixed(2) + "px");
-          header.style.setProperty("--header-parallax-y", oy.toFixed(2) + "px");
-        });
-
-        header.addEventListener("mouseleave", () => {
-          header.style.setProperty("--header-parallax-x", "0px");
-          header.style.setProperty("--header-parallax-y", "0px");
-        });
-      }
-
-      initSubtleParticles();
-      bindHeaderParallax();
-      // 初始化 Lucide 图标
-      lucide.createIcons();
-    </script>
-  </body>
+  <script type="module" src="/web/js/app_image.js"></script>
+</body>
 </html>

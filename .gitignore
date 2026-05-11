@@ -5,6 +5,17 @@ build/
 dist/
 wheels/
 *.egg-info
+*.swp
 
 # Virtual environments
 .venv
+
+# IDE and local history
+.history/
+.vscode/
+.idea/
+
+# Node modules for frontend
+node_modules/
+dist/
+.env

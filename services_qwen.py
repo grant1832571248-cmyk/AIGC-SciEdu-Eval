@@ -18,7 +18,17 @@ class QwenJudgeClient:
     base_url: str
     model: str
     timeout_s: float
-    version: str = "1.0.2" # 用于验证代码版本
+    version: str = "1.0.3" # 用于验证代码版本
+
+    @staticmethod
+    def _normalize_clip_quality_level(score_0_100: float, quality_level: Any) -> str:
+        raw = str(quality_level or "").strip()
+        normalized = raw if raw in {"高", "中", "低"} else "中"
+        if score_0_100 < 45:
+            return "低"
+        if score_0_100 < 75 and normalized == "高":
+            return "中"
+        return normalized
 
     def _parse_json_object_from_text(self, text: str) -> dict[str, Any]:
         """
@@ -290,30 +300,32 @@ class QwenJudgeClient:
 
     def explain_clip(self, prompt: str, similarity: float, score_0_100: float, audience: str) -> dict[str, Any]:
         """
-        基于用户实验成功的图文分析 curl 请求进行重写。
-        Why: 引入更严苛的约束条件，并启用 json_object 模式以确保输出纯净。
+        基于 CLIP 评分对提示词进行建议。
+        注意：Qwen 无法直接看到图像，因此评估仅针对提示词（Prompt）本身的文本质量及预估的匹配表现。
         """
         sys_prompt = (
-            "你是面向中小学教师的内容质量分析助手。所有输出必须使用中文（Simplified Chinese）。\n"
+            "你是一个资深的教学指令（Prompt）分析专家。你的任务是根据提供的提示词文本、目标受众以及系统返回的图文匹配分数，对“提示词本身”的质量进行评估并给出改进建议。\n"
+            "【核心原则】：\n"
+            "1. 你无法看到图像内容，严禁对图像的具体细节进行臆测或描述。\n"
+            "2. 你的评估和建议应集中在：提示词的表达是否清晰、是否符合受众认知水平、科学术语是否规范、以及如何通过修改“提示词文本”来获得更好的生成效果。\n"
+            "3. 所有输出必须使用简体中文。\n"
             "【约束条件】：\n"
-            "1. 必须直接输出纯 JSON 格式，严禁包含任何非 JSON 文本或推理过程（Thinking Process）。\n"
+            "1. 必须直接输出纯 JSON 格式，严禁包含任何非 JSON 文本或推理过程。\n"
             "2. 建议请保持精练，总长度不超过 300 字。\n"
-            "3. 必须使用简体中文。\n"
             "JSON 结构：\n"
             "{\n"
             '  "quality_level": "高/中/低",\n'
-            '  "summary": "一句话结论",\n'
-            '  "highlights": ["要点"],\n'
-            '  "issues": ["问题"],\n'
-            '  "suggestions": ["可执行建议"]\n'
+            '  "summary": "针对提示词的一句话结论",\n'
+            '  "highlights": ["提示词文本的优点"],\n'
+            '  "issues": ["提示词文本存在的问题（如表述模糊、不适合受众等）"],\n'
+            '  "suggestions": ["改进提示词文本的具体建议"]\n'
             "}"
         )
         user_content = (
             f"受众：{audience}\n"
-            f"生成指令：{prompt}\n"
-            f"图文相似度：{similarity:.4f}\n"
-            f"图文分数(0-100)：{score_0_100:.2f}\n"
-            "请直接输出评估结果 JSON。"
+            f"提示词（Prompt）：{prompt}\n"
+            f"系统计算的图文相似度参考值：{similarity:.4f} (分数: {score_0_100:.2f}/100)\n"
+            "请基于以上信息，仅针对提示词文本质量输出评估结果 JSON。"
         )
         data = self.chat_json(
             system_prompt=sys_prompt, 
@@ -326,39 +338,56 @@ class QwenJudgeClient:
         )
         if not isinstance(data, dict):
             raise QwenJudgeError("Invalid explain JSON")
+        quality_level = self._normalize_clip_quality_level(score_0_100, data.get("quality_level", ""))
+        issues = [str(x)[:100] for x in data.get("issues", [])[:5]] if isinstance(data.get("issues", []), list) else []
+        if score_0_100 < 45 and "图像与文本描述相关性较低" not in issues:
+            issues = ["图像与文本描述相关性较低"] + issues
         return {
-            "quality_level": str(data.get("quality_level", ""))[:10],
+            "quality_level": quality_level,
             "summary": str(data.get("summary", ""))[:200],
             "highlights": [str(x)[:100] for x in data.get("highlights", [])[:5]] if isinstance(data.get("highlights", []), list) else [],
-            "issues": [str(x)[:100] for x in data.get("issues", [])[:5]] if isinstance(data.get("issues", []), list) else [],
+            "issues": issues,
             "suggestions": [str(x)[:120] for x in data.get("suggestions", [])[:8]] if isinstance(data.get("suggestions", []), list) else [],
         }
 
     def explain_video(self, prompt: str, similarity: float, score_0_100: float, audience: str) -> dict[str, Any]:
         """
-        专门针对视频内容的一致性评分进行解释与建议。
+        专门针对视频内容的一致性评分对提示词进行建议。
         """
         sys_prompt = (
-            "你是面向中小学教师的视频内容质量分析助手。所有输出必须使用中文（Simplified Chinese）。\n"
+            "你是一个资深的视频教学指令（Prompt）分析专家。你的任务是根据提供的视频描述文本、目标受众以及系统返回的视频内容匹配质量，对“视频描述文本本身”的质量进行评估并给出改进建议。\n"
+            "【核心原则】：\n"
+            "1. 你无法看到视频画面，严禁对视频的具体画面细节进行臆测或描述。\n"
+            "2. 你的评估和建议应集中在：视频描述是否具体、是否符合受众认知、以及如何修改“描述文本”以更准确地表达教学意图。\n"
+            "3. 严禁在输出中出现 any 具体的相似度数字或评分指标。\n"
+            "4. 所有输出必须使用简体中文。\n"
             "【约束条件】：\n"
-            "1. 必须直接输出纯 JSON 格式，严禁包含任何非 JSON 文本或推理过程（Thinking Process）。\n"
+            "1. 必须直接输出纯 JSON 格式，严禁包含任何非 JSON 文本或推理过程。\n"
             "2. 建议请保持精练，总长度不超过 400 字。\n"
-            "3. 必须使用简体中文。\n"
             "JSON 结构：\n"
             "{\n"
-            '  "quality_level": "高/中/低",\n'
-            '  "summary": "视频内容结论",\n'
-            '  "highlights": ["视频亮点"],\n'
-            '  "issues": ["潜在问题"],\n'
-            '  "suggestions": ["针对性改进建议"]\n'
+            '  "quality_level": "优秀/良好/不及格",\n'
+            '  "summary": "针对描述文本的一句话结论",\n'
+            '  "highlights": ["描述文本的优点"],\n'
+            '  "issues": ["描述文本存在的问题"],\n'
+            '  "suggestions": ["改进描述文本的具体建议"]\n'
             "}"
         )
+        if similarity < 0.1:
+            quality_level = "不及格"
+            quality_desc = "视频画面与文字描述的内容相关性较低，整体匹配程度不理想"
+        elif similarity < 0.2:
+            quality_level = "良好"
+            quality_desc = "视频画面与文字描述的内容基本吻合，匹配程度良好"
+        else:
+            quality_level = "优秀"
+            quality_desc = "视频画面与文字描述的内容高度一致，匹配程度优秀"
+
         user_content = (
             f"受众：{audience}\n"
-            f"视频描述/指令：{prompt}\n"
-            f"视频-文本相似度：{similarity:.4f}\n"
-            f"视频评分(0-100)：{score_0_100:.2f}\n"
-            "请根据上述 X-CLIP 评分结果，从视频动态表现与文本一致性的角度，直接输出评估结果 JSON。"
+            f"视频描述（Prompt）：{prompt}\n"
+            f"系统评估的匹配质量参考：{quality_level} ({quality_desc})\n"
+            "请基于以上信息，仅针对视频描述文本的质量输出评估结果 JSON。"
         )
         data = self.chat_json(
             system_prompt=sys_prompt, 
@@ -381,9 +410,7 @@ class QwenJudgeClient:
 
     def generate_comprehensive_report(self, prompt: str, similarity: float, score_0_100: float, audience: str, subject: str | None = None, grade: str | None = None) -> dict[str, Any]:
         """
-        一站式生成包含科学性与教学建议的综合报告。
-        Why: 满足用户对效率的要求，将多次请求合并为一次请求，并增加数据标准化逻辑以防流程中断。
-        支持可选的 subject 和 grade 参数。
+        一站式生成包含科学性与教学建议的综合报告（仅针对提示词文本）。
         """
         # 构造上下文信息
         context_str = ""
@@ -393,39 +420,42 @@ class QwenJudgeClient:
             if grade: context_str += f"\n- 学段/年级：{grade}"
 
         sys_prompt = (
-            "你是面向中小学教师的内容质量评估专家。请针对提供的图文生成指令及图像评分结果，从“科学准确性”和“教学建议”两个维度进行深度评估。所有输出必须使用中文（Simplified Chinese）。\n"
+            "你是一个资深的教学内容质量评估专家。请针对提供的提示词（Prompt）文本及系统匹配评分，从“科学准确性”和“教学建议”两个维度对“提示词文本本身”进行深度评估。\n"
+            "【核心原则】：\n"
+            "1. 你无法看到具体的图像或视频画面，严禁对视觉细节进行臆测。你的分析必须完全基于“提示词文本”本身。\n"
+            "2. “科学准确性”应评估提示词中描述的科学原理、事实、术语是否准确规范。\n"
+            "3. “教学建议”应评估提示词是否适合目标受众，以及如何优化文本以提升教学效果。\n"
+            "4. 所有分析和字段内容必须使用简体中文。\n"
             "【约束条件】：\n"
-            "1. 必须直接输出纯 JSON 格式，严禁包含任何非 JSON 文本或推理过程（Thinking Process）。\n"
+            "1. 必须直接输出纯 JSON 格式，严禁包含任何非 JSON 文本或推理过程。\n"
             "2. 分析与建议请保持精练，总长度不超过 500 字。\n"
-            "3. 必须使用简体中文。\n"
             "JSON 结构：\n"
             "{\n"
             '  "science": {\n'
             '    "fact_score": 1-10,\n'
             '    "logic_score": 1-10,\n'
             '    "error_type": "无/事实错误/逻辑断裂/术语不当",\n'
-            '    "detailed_analysis": "科学分析（中文）",\n'
+            '    "detailed_analysis": "针对提示词文本的科学性分析",\n'
             '    "is_high_quality": true/false\n'
             "  },\n"
             '  "pedagogy": {\n'
             '    "quality_level": "高/中/低",\n'
-            '    "summary": "一句话结论",\n'
-            '    "highlights": ["要点"],\n'
-            '    "issues": ["问题"],\n'
-            '    "suggestions": ["可执行建议"]\n'
+            '    "summary": "针对提示词教学价值的一句话结论",\n'
+            '    "highlights": ["提示词文本的优点"],\n'
+            '    "issues": ["提示词文本在教学表达上的不足"],\n'
+            '    "suggestions": ["改进提示词文本的具体建议"]\n'
             "  }\n"
             "}"
         )
         user_content = (
             f"受众：{audience}\n"
-            f"生成指令：{prompt}\n"
-            f"图文相似度：{similarity:.4f}\n"
-            f"图文分数(0-100)：{score_0_100:.2f}\n"
+            f"提示词（Prompt）：{prompt}\n"
+            f"系统图文匹配参考分数：{score_0_100:.2f}/100\n"
         )
         if context_str:
             user_content += context_str + "\n"
         
-        user_content += "请根据上述信息，输出包含 science 和 pedagogy 两个维度的评估结果 JSON。"
+        user_content += "请根据上述信息，仅针对提示词文本输出包含 science 和 pedagogy 两个维度的评估结果 JSON。"
         
         data = self.chat_json(
             system_prompt=sys_prompt,
@@ -454,11 +484,15 @@ class QwenJudgeClient:
             "is_high_quality": bool(science.get("is_high_quality", False))
         }
 
+        pedagogy_issues = [str(x)[:100] for x in pedagogy.get("issues", [])[:5]] if isinstance(pedagogy.get("issues"), list) else []
+        if score_0_100 < 45 and "图像与文本描述相关性较低" not in pedagogy_issues:
+            pedagogy_issues = ["图像与文本描述相关性较低"] + pedagogy_issues
+
         norm_pedagogy = {
-            "quality_level": str(pedagogy.get("quality_level", "中"))[:10],
+            "quality_level": self._normalize_clip_quality_level(score_0_100, pedagogy.get("quality_level", "中")),
             "summary": str(pedagogy.get("summary", "无结论"))[:200],
             "highlights": [str(x)[:100] for x in pedagogy.get("highlights", [])[:5]] if isinstance(pedagogy.get("highlights"), list) else [],
-            "issues": [str(x)[:100] for x in pedagogy.get("issues", [])[:5]] if isinstance(pedagogy.get("issues"), list) else [],
+            "issues": pedagogy_issues,
             "suggestions": [str(x)[:120] for x in pedagogy.get("suggestions", [])[:8]] if isinstance(pedagogy.get("suggestions"), list) else []
         }
 

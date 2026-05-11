@@ -34,7 +34,14 @@ def _env_int(name: str, default: int) -> int:
 
 
 APP_DIR = Path(__file__).resolve().parent
-WEB_DIR = APP_DIR / "web"
+# 只使用新的 React 前端编译目录
+WEB_DIR = APP_DIR / "frontend" / "dist"
+
+# 如果目录不存在（还没运行 npm run build），先创建一个空的，防止后端启动崩溃
+if not WEB_DIR.exists():
+    WEB_DIR.mkdir(parents=True, exist_ok=True)
+    (WEB_DIR / "index.html").write_text("<h1>React Front-end not built.</h1><p>Please run 'npm run build' in frontend directory.</p>", encoding="utf-8")
+
 INDEX_HTML = WEB_DIR / "index.html"
 
 
@@ -43,7 +50,9 @@ app = FastAPI(
     version="0.1.0",
 )
 
-app.mount("/web", StaticFiles(directory=str(WEB_DIR), html=True), name="web")
+# 挂载静态资源（仅 /assets 目录，不挂载根路径，避免拦截 POST API）
+if (WEB_DIR / "assets").exists():
+    app.mount("/assets", StaticFiles(directory=str(WEB_DIR / "assets")), name="assets")
 
 _clip = ClipScorer(
     model_name=os.getenv("CLIP_MODEL_NAME", "ViT-B/32"),
@@ -64,15 +73,6 @@ _qwen = QwenJudgeClient(
 _composite_w_clip = _env_float("COMPOSITE_W_CLIP", 0.5)
 _composite_w_qwen = _env_float("COMPOSITE_W_QWEN", 0.5)
 
-
-@app.get("/", include_in_schema=False)
-def ui() -> FileResponse:
-    """
-    根路由直接返回 index.html 首页。
-    """
-    if INDEX_HTML.exists():
-        return FileResponse(INDEX_HTML)
-    raise HTTPException(status_code=500, detail="web front-end not found")
 
 
 @app.get("/healthz", include_in_schema=False)
@@ -359,10 +359,14 @@ async def generate_report(
         science_res = comp_res.get("science", {})
         advice_res = comp_res.get("pedagogy", {})
         
-        # 综合分计算：防御性取值
+        # 综合分计算：使用调和平均，避免“图文不符但文本本身科学”时总分仍偏高
         fact_score = float(science_res.get("fact_score", 0.0))
         clip_score = float(clip_res.get("score_0_100", 0.0))
-        total_score = (clip_score + fact_score * 10.0) / 2.0
+        science_score_0_100 = max(0.0, min(100.0, fact_score * 10.0))
+        if clip_score <= 0.0 or science_score_0_100 <= 0.0:
+            total_score = 0.0
+        else:
+            total_score = 2.0 * clip_score * science_score_0_100 / (clip_score + science_score_0_100)
 
         return {
             "status": "success",
@@ -393,5 +397,14 @@ def get_config() -> dict[str, Any]:
         "clip_weight_path": str(_clip.model_weight_path) if _clip.model_weight_path is not None else None,
         "limits": {"max_upload_mb": _env_int("MAX_UPLOAD_MB", 20)},
     }
+
+
+@app.get("/", include_in_schema=False)
+@app.get("/{full_path:path}", include_in_schema=False)
+def spa_fallback(full_path: str = "") -> FileResponse:
+    """SPA fallback: 所有非 API 的 GET 请求返回 index.html，让 React Router 处理路由。"""
+    if INDEX_HTML.exists():
+        return FileResponse(INDEX_HTML)
+    raise HTTPException(status_code=404, detail="Front-end not built")
 
 
